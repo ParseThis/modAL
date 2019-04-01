@@ -99,6 +99,95 @@ class ActiveLearner(BaseLearner):
             self._fit_on_new(X, y, bootstrap=bootstrap, **fit_kwargs)
 
 
+
+class OnlineActiveLearner(BaseLearner):
+    """
+    This class is an abstract model of a general active learning algorithm.
+
+    Args:
+        estimator: The estimator to be used in the active learning loop.
+        query_strategy: Function providing the query strategy for the active learning loop,
+            for instance, modAL.uncertainty.uncertainty_sampling.
+        X_training: Initial training samples, if available.
+        y_training: Initial training labels corresponding to initial training samples.
+        bootstrap_init: If initial training data is available, bootstrapping can be done during the first training.
+            Useful when building Committee models with bagging.
+        **fit_kwargs: keyword arguments.
+
+    Attributes:
+        estimator: The estimator to be used in the active learning loop.
+        query_strategy: Function providing the query strategy for the active learning loop.
+        X_training: If the model hasn't been fitted yet it is None, otherwise it contains the samples
+            which the model has been trained on.
+        y_training: The labels corresponding to X_training.
+
+    Examples:
+
+        >>> from sklearn.datasets import load_iris
+        >>> from sklearn.ensemble import RandomForestClassifier
+        >>> from modAL.models import ActiveLearner
+        >>> iris = load_iris()
+        >>> # give initial training examples
+        >>> X_training = iris['data'][[0, 50, 100]]
+        >>> y_training = iris['target'][[0, 50, 100]]
+        >>>
+        >>> # initialize active learner
+        >>> learner = ActiveLearner(
+        ...     estimator=RandomForestClassifier(),
+        ...     X_training=X_training, y_training=y_training
+        ... )
+        >>>
+        >>> # querying for labels
+        >>> query_idx, query_sample = learner.query(iris['data'])
+        >>>
+        >>> # ...obtaining new labels from the Oracle...
+        >>>
+        >>> # teaching newly labelled examples
+        >>> learner.teach(
+        ...     X=iris['data'][query_idx].reshape(1, -1),
+        ...     y=iris['target'][query_idx].reshape(1, )
+        ... )
+    """
+
+    def __init__(self,
+                 estimator: BaseEstimator,
+                 query_strategy: Callable = uncertainty_sampling,
+                 X_training: Optional[modALinput] = None,
+                 y_training: Optional[modALinput] = None,
+                 bootstrap_init: bool = False,
+                 **fit_kwargs
+                 ) -> None:
+        super().__init__(estimator, query_strategy,
+                         X_training, y_training, bootstrap_init, **fit_kwargs)
+       
+        # Monkey patch the estimator `fit` function to 
+        # allow for a pass through call to underlying keras model `fit`.
+        # Now new data points be called on an existing keras model
+        # instead of a new model being build at each query iteration.
+        model = getattr(self.estimator, 'model', None)
+        if not model:
+            raise ValueError('Expecting a model to an `KerasClassifier` which would contain a\'
+                              model object wit a fit attribute.')
+        self.estimator.fit = self.estimator.model.fit
+
+    def teach(self, X: modALinput, y: modALinput, bootstrap: bool = False, only_new: bool = False, **fit_kwargs) -> None:
+        """
+        Adds X and y to the known training data and retrains the predictor with the augmented dataset.
+
+        Args:
+            X: The new samples for which the labels are supplied by the expert.
+            y: Labels corresponding to the new instances in X.
+            bootstrap: If True, training is done on a bootstrapped dataset. Useful for building Committee models
+                with bagging.
+            only_new: If True, the model is retrained using only X and y, ignoring the previously provided examples.
+                Useful when working with models where the .fit() method doesn't retrain the model from scratch (e. g. in
+                tensorflow or keras).
+            **fit_kwargs: Keyword arguments to be passed to the fit method of the predictor.
+        """
+        self._add_training_data(X, y)
+        self._fit_on_new(X, y, bootstrap=bootstrap, **fit_kwargs)
+
+
 """
 Classes for Bayesian optimization
 ---------------------------------
