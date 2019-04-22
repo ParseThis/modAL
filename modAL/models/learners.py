@@ -166,8 +166,8 @@ class OnlineActiveLearner(BaseLearner):
         # instead of a new model being build at each query iteration.
         model = getattr(self.estimator, 'model', None)
         if not model:
-            raise ValueError('Expecting a model to an `KerasClassifier` which would contain a\'
-                              model object wit a fit attribute.')
+            raise ValueError('Expecting a model to an `KerasClassifier` which would contain a'
+                              'model object wit a fit attribute.')
         self.estimator.fit = self.estimator.model.fit
 
     def teach(self, X: modALinput, y: modALinput, bootstrap: bool = False, only_new: bool = False, **fit_kwargs) -> None:
